@@ -6,19 +6,17 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
-import android.os.Environment
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
-import java.io.File
-import java.io.FileWriter
-import java.io.IOException
+import com.github.mikephil.charting.charts.LineChart
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -27,7 +25,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var selectedSensors = mutableListOf<Sensor>()
     private var sensorData by mutableStateOf("센서 데이터가 여기에 표시됩니다.")
     private var samplingRate by mutableIntStateOf(1000)
-    private val dataLog = mutableListOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +37,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     @Composable
     fun SensorDataApp() {
+        val context = LocalContext.current
         var intervalText by remember { mutableStateOf("1000") }
         var selectedSensorIndex by remember { mutableIntStateOf(0) }
         var expanded by remember { mutableStateOf(false) }
@@ -85,10 +83,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
             Slider(
                 value = samplingRate.toFloat(),
-                onValueChange = {
-                    samplingRate = it.toInt()
-                    intervalText = samplingRate.toString()
-                },
+                onValueChange = { samplingRate = it.toInt() },
                 valueRange = 100f..5000f
             )
             Text("현재 주기: ${samplingRate} ms")
@@ -106,7 +101,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                         SensorManager.SENSOR_DELAY_NORMAL
                     )
                     sensorData = "데이터 수집 시작"
-                    dataLog.clear()
                 }
             }) {
                 Text("시작")
@@ -120,15 +114,17 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 Text("정지")
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-            Button(onClick = {
-                saveDataToCsv()
-            }) {
-                Text("CSV로 저장")
-            }
-
             Spacer(modifier = Modifier.height(16.dp))
             Text(sensorData, style = MaterialTheme.typography.bodyLarge)
+
+            // 📌 AndroidView를 사용하여 LineChart 추가
+            Spacer(modifier = Modifier.height(16.dp))
+            AndroidView(
+                factory = { ctx -> LineChart(ctx).apply { SensorUtils.setupChart(this) } },
+                modifier = Modifier.fillMaxWidth().height(300.dp)
+            ) { chart ->
+                SensorUtils.loadCsvAndPlotGraph(context, chart, "sensor_data.csv")
+            }
         }
     }
 
@@ -138,36 +134,15 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     override fun onSensorChanged(event: SensorEvent?) {
         if (event != null) {
+            val timestamp = System.currentTimeMillis()
             val sensorValues = event.values.joinToString(", ")
-            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
             val data = "센서: ${event.sensor.name} | 값: $sensorValues | 시간: $timestamp\n"
             sensorData = data
 
-            val csvData = "$timestamp,${event.sensor.name},$sensorValues"
-            dataLog.add(csvData)
+            // 📌 센서 데이터 CSV 파일에 저장
+            SensorUtils.saveSensorDataToCsv(this, "sensor_data.csv", timestamp, event.values)
         }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
-
-
-    private fun saveDataToCsv() {
-        val timeStamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
-        val fileName = "SensorData_$timeStamp.csv"
-
-        val file = File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), fileName)
-
-        try {
-            val writer = FileWriter(file)
-            writer.append("시간,센서이름,값\n")
-            for (line in dataLog) {
-                writer.append(line).append("\n")
-            }
-            writer.flush()
-            writer.close()
-            sensorData = "CSV 저장 완료: ${file.absolutePath}"
-        } catch (e: IOException) {
-            sensorData = "CSV 저장 실패: ${e.message}"
-        }
-    }
 }
