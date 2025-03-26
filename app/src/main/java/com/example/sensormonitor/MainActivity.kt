@@ -6,6 +6,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
+import android.os.Environment
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -15,11 +16,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.github.mikephil.charting.charts.LineChart
-import com.github.mikephil.charting.data.Entry
-import com.github.mikephil.charting.data.LineData
-import com.github.mikephil.charting.data.LineDataSet
 import java.io.File
+import java.io.FileWriter
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -28,7 +27,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var selectedSensors = mutableListOf<Sensor>()
     private var sensorData by mutableStateOf("센서 데이터가 여기에 표시됩니다.")
     private var samplingRate by mutableIntStateOf(1000)
-    private val dataPoints = mutableStateListOf<Entry>()
+    private val dataLog = mutableListOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,7 +85,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
             Slider(
                 value = samplingRate.toFloat(),
-                onValueChange = { samplingRate = it.toInt() },
+                onValueChange = {
+                    samplingRate = it.toInt()
+                    intervalText = samplingRate.toString()
+                },
                 valueRange = 100f..5000f
             )
             Text("현재 주기: ${samplingRate} ms")
@@ -101,9 +103,10 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     sensorManager.registerListener(
                         this@MainActivity,
                         selectedSensor,
-                        SensorManager.SENSOR_DELAY_UI
+                        SensorManager.SENSOR_DELAY_NORMAL
                     )
                     sensorData = "데이터 수집 시작"
+                    dataLog.clear()
                 }
             }) {
                 Text("시작")
@@ -117,15 +120,9 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                 Text("정지")
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Button(onClick = {
-                // CSV 저장 버튼
-                val selectedSensor = sensorList.getOrNull(selectedSensorIndex)
-                if (selectedSensor != null) {
-                    // 센서 이름과 데이터를 CSV로 저장
-                    val sensorValues = selectedSensor.name
-                    SensorUtils.saveSensorDataToCsv(this@MainActivity, "sensor_data.csv", System.currentTimeMillis(), floatArrayOf(0.0f))
-                }
+                saveDataToCsv()
             }) {
                 Text("CSV로 저장")
             }
@@ -141,15 +138,36 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     override fun onSensorChanged(event: SensorEvent?) {
         if (event != null) {
-            val timestamp = System.currentTimeMillis()
-            val sensorValues = event.values // event.values는 FloatArray로 반환됩니다.
-            val data = "센서: ${event.sensor.name} | 값: ${sensorValues.joinToString(", ")} | 시간: $timestamp\n"
+            val sensorValues = event.values.joinToString(", ")
+            val timestamp = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            val data = "센서: ${event.sensor.name} | 값: $sensorValues | 시간: $timestamp\n"
             sensorData = data
 
-            // 센서 값을 CSV 파일로 저장하는 부분
-            SensorUtils.saveSensorDataToCsv(this, "sensor_data.csv", timestamp, sensorValues)
+            val csvData = "$timestamp,${event.sensor.name},$sensorValues"
+            dataLog.add(csvData)
         }
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+
+    private fun saveDataToCsv() {
+        val timeStamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+        val fileName = "SensorData_$timeStamp.csv"
+
+        val file = File(getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), fileName)
+
+        try {
+            val writer = FileWriter(file)
+            writer.append("시간,센서이름,값\n")
+            for (line in dataLog) {
+                writer.append(line).append("\n")
+            }
+            writer.flush()
+            writer.close()
+            sensorData = "CSV 저장 완료: ${file.absolutePath}"
+        } catch (e: IOException) {
+            sensorData = "CSV 저장 실패: ${e.message}"
+        }
+    }
 }
