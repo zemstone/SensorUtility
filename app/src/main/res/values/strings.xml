@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">SensorMonitor</string>
+    <string name="data">데이터: -</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="interval">수집 주기 (ms)</string>
+    <string name="hint_interval">1000</string>
+    <string name="sensor_list">센서 목록</string>
+</resources>
