@@ -9,14 +9,17 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import com.github.mikephil.charting.charts.LineChart
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -25,6 +28,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     private var selectedSensors = mutableListOf<Sensor>()
     private var sensorData by mutableStateOf("센서 데이터가 여기에 표시됩니다.")
     private var samplingRate by mutableIntStateOf(1000)
+    private val dataPoints = mutableStateListOf<Entry>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,7 +41,6 @@ class MainActivity : ComponentActivity(), SensorEventListener {
 
     @Composable
     fun SensorDataApp() {
-        val context = LocalContext.current
         var intervalText by remember { mutableStateOf("1000") }
         var selectedSensorIndex by remember { mutableIntStateOf(0) }
         var expanded by remember { mutableStateOf(false) }
@@ -98,7 +101,7 @@ class MainActivity : ComponentActivity(), SensorEventListener {
                     sensorManager.registerListener(
                         this@MainActivity,
                         selectedSensor,
-                        SensorManager.SENSOR_DELAY_NORMAL
+                        SensorManager.SENSOR_DELAY_UI
                     )
                     sensorData = "데이터 수집 시작"
                 }
@@ -115,16 +118,20 @@ class MainActivity : ComponentActivity(), SensorEventListener {
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            Text(sensorData, style = MaterialTheme.typography.bodyLarge)
-
-            // 📌 AndroidView를 사용하여 LineChart 추가
-            Spacer(modifier = Modifier.height(16.dp))
-            AndroidView(
-                factory = { ctx -> LineChart(ctx).apply { SensorUtils.setupChart(this) } },
-                modifier = Modifier.fillMaxWidth().height(300.dp)
-            ) { chart ->
-                SensorUtils.loadCsvAndPlotGraph(context, chart, "sensor_data.csv")
+            Button(onClick = {
+                // CSV 저장 버튼
+                val selectedSensor = sensorList.getOrNull(selectedSensorIndex)
+                if (selectedSensor != null) {
+                    // 센서 이름과 데이터를 CSV로 저장
+                    val sensorValues = selectedSensor.name
+                    SensorUtils.saveSensorDataToCsv(this@MainActivity, "sensor_data.csv", System.currentTimeMillis(), floatArrayOf(0.0f))
+                }
+            }) {
+                Text("CSV로 저장")
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(sensorData, style = MaterialTheme.typography.bodyLarge)
         }
     }
 
@@ -135,12 +142,12 @@ class MainActivity : ComponentActivity(), SensorEventListener {
     override fun onSensorChanged(event: SensorEvent?) {
         if (event != null) {
             val timestamp = System.currentTimeMillis()
-            val sensorValues = event.values.joinToString(", ")
-            val data = "센서: ${event.sensor.name} | 값: $sensorValues | 시간: $timestamp\n"
+            val sensorValues = event.values // event.values는 FloatArray로 반환됩니다.
+            val data = "센서: ${event.sensor.name} | 값: ${sensorValues.joinToString(", ")} | 시간: $timestamp\n"
             sensorData = data
 
-            // 📌 센서 데이터 CSV 파일에 저장
-            SensorUtils.saveSensorDataToCsv(this, "sensor_data.csv", timestamp, event.values)
+            // 센서 값을 CSV 파일로 저장하는 부분
+            SensorUtils.saveSensorDataToCsv(this, "sensor_data.csv", timestamp, sensorValues)
         }
     }
 
